@@ -7,12 +7,12 @@ import random
 # set the training parameters
 parser = argparse.ArgumentParser()
 parser.add_argument("--c", type=float, default=0.01)
-parser.add_argument("--lr", type=float, default=0.1)
+parser.add_argument("--lr", type=float, default=0.01)
 parser.add_argument("--batchsize", type=int, default=10)
 parser.add_argument("--epoch", type=int, default=1)
-parser.add_argument("--prop_k", type=int, default=5)
-parser.add_argument("--threshhold", type=float, default=5)
-parser.add_argument("--seed", type=int, default=0)
+parser.add_argument("--prop_k", type=int, default=2)
+parser.add_argument("--threshhold", type=float, default=4)
+parser.add_argument("--seed", type=int, default=2)
 args = parser.parse_args()
 
 # set the random seeds
@@ -22,7 +22,7 @@ random.seed(1234)
 
 # set the architecture parameters
 K = 10  # number of local nodes
-T = 200 # total number of training steps
+T = 1000 # total number of training steps
 tau = 10 # global aggregation frequency
 in_dim = 784
 out_dim = 1
@@ -97,6 +97,8 @@ plt.plot(test_accuracy_list3)
 plt.legend(['random', 'rrboin', 'prop_k'])
 plt.xlabel('#Training steps')
 plt.ylabel('Test Accuracy')
+plt.title('threshhold = ' + str(args.threshhold) +
+          ', prop_k = ' + str(args.prop_k) + ', #local nodes = ' + str(K))
 plt.show()
 
 
