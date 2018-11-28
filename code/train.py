@@ -2,7 +2,7 @@ from models import *
 from utils import *
 import argparse
 import matplotlib.pyplot as plt
-
+import random
 
 # set the training parameters
 parser = argparse.ArgumentParser()
@@ -10,11 +10,19 @@ parser.add_argument("--c", type=float, default=0.01)
 parser.add_argument("--lr", type=float, default=0.1)
 parser.add_argument("--batchsize", type=int, default=10)
 parser.add_argument("--epoch", type=int, default=1)
+parser.add_argument("--prop_k", type=int, default=5)
+parser.add_argument("--threshhold", type=float, default=5)
+parser.add_argument("--seed", type=int, default=0)
 args = parser.parse_args()
+
+# set the random seeds
+torch.manual_seed(args.seed)
+np.random.seed(args.seed)
+random.seed(1234)
 
 # set the architecture parameters
 K = 10  # number of local nodes
-T = 1000 # total number of training steps
+T = 200 # total number of training steps
 tau = 10 # global aggregation frequency
 in_dim = 784
 out_dim = 1
@@ -57,7 +65,7 @@ def train(mode):
             for k in range(K):
                 train_accuracy.append(fl_model.predict_local(X_test_dist[k], y_test_dist[k], k))
             train_accuracy = np.sum(np.asarray(train_accuracy))/K
-            print('The accuracy in step {} is {}'.format(t, train_accuracy))
+            #print('The accuracy in step {} is {}'.format(t, train_accuracy))
             train_accuracy_list.append(train_accuracy)
 
     
@@ -70,7 +78,26 @@ def train(mode):
 
 
 test_accuracy_list1, train_accuracy_list1 = train('random')
-test_accuracy_list1, train_accuracy_list1 = train('rrobin')
-test_accuracy_list1, train_accuracy_list1 = train('prop_k')
+test_accuracy_list2, train_accuracy_list2 = train('rrobin')
+test_accuracy_list3, train_accuracy_list3 = train('prop_k')
+
+# plt.figure()
+# plt.plot(train_accuracy_list1)
+# plt.plot(train_accuracy_list2)
+# plt.plot(train_accuracy_list3)
+# plt.legend(['random', 'rrboin', 'prop_k'])
+# plt.xlabel('#Training steps')
+# plt.ylabel('Train Accuracy')
+# plt.show()
+
+plt.figure()
+plt.plot(test_accuracy_list1)
+plt.plot(test_accuracy_list2)
+plt.plot(test_accuracy_list3)
+plt.legend(['random', 'rrboin', 'prop_k'])
+plt.xlabel('#Training steps')
+plt.ylabel('Test Accuracy')
+plt.show()
+
 
 

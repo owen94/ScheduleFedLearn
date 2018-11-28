@@ -12,6 +12,54 @@ class LinearSVM(nn.Module):
         h = self.fc(x)
         return h
 
+class LogisticReg(nn.Module):
+    def __init__(self):
+        super(LogisticReg, self).__init__()
+
+
+    def __forward(self, x):
+        return x
+
+
+class MNIST_CNN(nn.Module):
+    def __init__(self):
+        super(Net, self).__init__()
+        self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
+        self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
+        self.conv2_drop = nn.Dropout2d()
+        self.fc1 = nn.Linear(320, 50)
+        self.fc2 = nn.Linear(50, 10)
+
+    def forward(self, x):
+        x = F.relu(F.max_pool2d(self.conv1(x), 2))
+        x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
+        x = x.view(-1, 320)
+        x = F.relu(self.fc1(x))
+        x = F.dropout(x, training=self.training)
+        x = self.fc2(x)
+        return F.log_softmax(x, dim=1)
+
+
+
+class Cifar10_CNN(nn.Module):
+    def __init__(self):
+        super(Net, self).__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 10)
+
+    def forward(self, x):
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = x.view(-1, 16 * 5 * 5)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
 
 class FedLearn(object):
     def __init__(self, K, in_dim, out_dim, args, method='SVM'):
@@ -164,9 +212,9 @@ class ScheduleFedLearn(object):
                 x = X[perm[i: i + self.args.batchsize]]
                 y = Y[perm[i: i + self.args.batchsize]]
 
-                if torch.cuda.is_available():
-                    x = x.cuda()
-                    y = y.cuda()
+                # if torch.cuda.is_available():
+                #     x = x.cuda()
+                #     y = y.cuda()
 
                 optimizer.zero_grad()
                 output = model(x)
@@ -179,7 +227,7 @@ class ScheduleFedLearn(object):
 
             # print("Node: {} Epoch: {:4d}  loss:{}".format(k, epoch, sum_loss / N))
 
-    def global_aggregation(self, num_nodes=5, mode='random', threshhold=1, step=0):
+    def global_aggregation(self, mode='random', step=0):
         # do a global aggregation
         # nodes: the index of nodes to be updated, a list of integers
         m = Exponential(1)
@@ -189,11 +237,11 @@ class ScheduleFedLearn(object):
 
         # select which local update can be used for aggregation
         if mode == 'random':
-            node = np.random.choice(range(self.K), size=num_nodes, replace=False)
+            node = np.random.choice(range(self.K), size=self.args.prop_k, replace=False)
         elif mode == 'rrobin':
             nodes = np.arange(self.K)
-            batch_index = (step*self.args.batchsize)//self.K
-            node = nodes[ batch_index * self.args.batchsize : (batch_index+1) * self.args.batchsize]
+            batch_index = (step*self.args.prop_k)%self.K
+            node = nodes[ batch_index * self.args.prop_k : (batch_index+1) * self.args.prop_k]
         elif mode == 'prop_k':
             node = np.argsort(h.numpy())[-self.args.prop_k:]
         else:
@@ -201,7 +249,7 @@ class ScheduleFedLearn(object):
 
         success_node = []
         for i in node:
-            if h[i] >=threshhold:
+            if h[i] >= self.args.threshhold:
                 success_node.append(i)
 
         # only aggregatiate the nodes taht has a good channle state
