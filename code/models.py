@@ -147,6 +147,7 @@ class FedLearn(object):
 
     def predict_local(self, X, Y, k=None):
         # prediction task based on the global params
+        self.local_model[k].eval()
         X = torch.FloatTensor(X)
         predict = self.local_model[k](X).detach().numpy().squeeze()
         predict[np.argwhere(predict>=0)] = 1
@@ -160,6 +161,7 @@ class FedLearn(object):
         return accuracy
     
     def predict_global(self, X, Y):
+        self.global_model.eval()
         X = torch.FloatTensor(X)
         predict = self.global_model(X).detach().numpy().squeeze()
         predict[np.argwhere(predict >= 0)] = 1
@@ -275,6 +277,7 @@ class ScheduleFedLearn(object):
                     f.data = global_params[i]
 
     def predict_local(self, X, Y, k=None):
+        self.local_model[k].eval()
         # prediction task based on the global params
         X = torch.FloatTensor(X)
         predict = self.local_model[k](X).detach().numpy().squeeze()
@@ -289,6 +292,7 @@ class ScheduleFedLearn(object):
         return accuracy
 
     def predict_global(self, X, Y):
+        self.global_model.eval()
         X = torch.FloatTensor(X)
         predict = self.global_model(X).detach().numpy().squeeze()
         predict[np.argwhere(predict >= 0)] = 1
