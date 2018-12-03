@@ -41,7 +41,7 @@ class MNIST_CNN(nn.Module):
 
 
 
-class Cifar10_CNN(nn.Module):
+class CIFAR10_CNN(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
         self.conv1 = nn.Conv2d(3, 6, 5)
@@ -172,7 +172,14 @@ class FedLearn(object):
 
 
 class ScheduleFedLearn(object):
-    def __init__(self, K, in_dim, out_dim, args, method='SVM'):
+    def __init__(self, K,  args, in_dim=None, out_dim=None, method='SVM'):
+        '''
+        :param K: number of local nodes
+        :param in_dim: input dim for SVM or logistic regression
+        :param out_dim: output dime for SVM or logistic regression
+        :param args: parser arguments
+        :param method: SVM, MNIST_CNN, CIFAR10_CNN, LogRegression
+        '''
         self.K = K
         self.method = method
         self.args = args
@@ -180,20 +187,42 @@ class ScheduleFedLearn(object):
         self.out_dim = out_dim
         self.init_architecture()
         self.init_optimizers()
+        self.to_device()
         self.local_n_samples = np.zeros(self.K)
 
     def init_architecture(self):
         # initlize local nodes
         self.local_model = []
-        for i in range(self.K):
-            self.local_model.append(LinearSVM(self.in_dim, self.out_dim))
-        self.global_model = LinearSVM(self.in_dim, self.out_dim)
+        if self.method is 'SVM':
+            for i in range(self.K):
+                self.local_model.append(LinearSVM(self.in_dim, self.out_dim))
+            self.global_model = LinearSVM(self.in_dim, self.out_dim)
+        elif self.method is 'MNIST_CNN':
+            for i in range(self.K):
+                self.local_model.append(MNIST_CNN())
+            self.global_model = MNIST_CNN()
+        elif self.method is 'CIFAR10_CNN':
+            for i in range(self.K):
+                self.local_model.append(CIFAR10_CNN())
+            self.global_model = CIFAR10_CNN()
+        elif self.method is 'LogRegression':
+            for i in range(self.K):
+                self.local_model.append(LogisticReg())
+            self.global_model = LogisticReg()
+        else:
+            print('Method not implemented........')
 
     def init_optimizers(self):
         self.optims = []
         for i in range(self.K):
             self.optims.append(optim.SGD(self.local_model[i].parameters(), lr=self.args.lr))
         self.global_optim = optim.SGD(self.global_model.parameters(), lr=self.args.lr)
+
+    def to_device(self):
+        self.device = torch.device("cuda" if use_cuda else "cpu")
+        for i in range(self.K):
+            self.local_model[i].to(self.device)
+        self.global_model.to(self.device)
 
     def update_local(self, X, Y, k):
         # update a local model
@@ -214,14 +243,25 @@ class ScheduleFedLearn(object):
                 x = X[perm[i: i + self.args.batchsize]]
                 y = Y[perm[i: i + self.args.batchsize]]
 
-                # if torch.cuda.is_available():
-                #     x = x.cuda()
-                #     y = y.cuda()
+                if torch.cuda.is_available():
+                    x = x.cuda()
+                    y = y.cuda()
 
                 optimizer.zero_grad()
                 output = model(x)
-                loss = torch.mean(torch.clamp(1 - output.t() * y, min=0))
-                loss += self.args.c * torch.mean(model.fc.weight ** 2)  # l2 penalty
+                if self.method is 'SVM':
+                    loss = torch.mean(torch.clamp(1 - output.t() * y, min=0))
+                    loss += self.args.c * torch.mean(model.fc.weight ** 2)  # l2 penalty
+                elif self.method is 'MNIST_CNN':
+                    loss = F.nll_loss(output, y)
+                elif self.method is 'CIFAR10_CNN':
+                    loss = F.nll_loss(output, y)
+                elif self.method is 'LogisticReg':
+                    loss =  F.smooth_l1_loss(output, y)
+
+                else:
+                    print('Method not implemented.... ')
+                    
                 loss.backward()
                 optimizer.step()
 
@@ -277,17 +317,29 @@ class ScheduleFedLearn(object):
                     f.data = global_params[i]
 
     def predict_local(self, X, Y, k=None):
-        self.local_model[k].eval()
-        # prediction task based on the global params
-        X = torch.FloatTensor(X)
-        predict = self.local_model[k](X).detach().numpy().squeeze()
-        predict[np.argwhere(predict >= 0)] = 1
-        predict[np.argwhere(predict < 0)] = -1
-        # print(predict)
-        # print(Y)
-        # print(predict==Y)
-        # print(np.sum(predict==Y))
-        accuracy = np.sum(predict == Y) / len(Y)
+        X = torch.FloatTensor(X).to(self.device)
+        if k is not None:
+            self.local_model[k].eval()
+            # prediction task based on the global params
+            predict = self.local_model[k](X).detach().numpy().squeeze()
+        else:
+            self.global_model.eval()
+            predict = self.global_model(X).detach().numpy().squeeze()
+        if self.method is 'SVM':
+            predict[np.argwhere(predict >= 0)] = 1
+            predict[np.argwhere(predict < 0)] = -1
+            accuracy = np.sum(predict == Y) / len(Y)
+        elif self.method is 'MNIST_CNN' or self.method is 'CIFAR10_CNN':
+            # Future version should use a test loader here instead of one batch
+            Y.to(self.device)
+            test_loss += F.nll_loss(prdict, reduction='sum').item()  # sum up batch loss
+            pred = predict.max(1, keepdim=True)[1]  # get the index of the max log-probability
+            accuracy = pred.eq(Y.view_as(pred)).sum().item()
+            accuracy /= len(Y)
+        elif self.method is 'LogisticReg':
+            print('To be implemented')
+        else:
+            print('Test method not implemented')
 
         return accuracy
 
