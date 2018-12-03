@@ -1,7 +1,7 @@
 from utils import *
 import torch.optim as optim
 from torch.distributions.exponential import Exponential
-
+import torch.nn.functional as F
 
 class LinearSVM(nn.Module):
     def __init__(self, in_dim, out_dim=1):
@@ -23,7 +23,7 @@ class LogisticReg(nn.Module):
 
 class MNIST_CNN(nn.Module):
     def __init__(self):
-        super(Net, self).__init__()
+        super(MNIST_CNN, self).__init__()
         self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
         self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
         self.conv2_drop = nn.Dropout2d()
@@ -31,15 +31,15 @@ class MNIST_CNN(nn.Module):
         self.fc2 = nn.Linear(50, 10)
 
     def forward(self, x):
-        x = F.relu(F.max_pool2d(self.conv1(x), 2))
+        x = self.conv1(x)
+
+        x = F.relu(F.max_pool2d(x, 2))
         x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
         x = x.view(-1, 320)
         x = F.relu(self.fc1(x))
         x = F.dropout(x, training=self.training)
         x = self.fc2(x)
         return F.log_softmax(x, dim=1)
-
-
 
 class CIFAR10_CNN(nn.Module):
     def __init__(self):
@@ -219,7 +219,7 @@ class ScheduleFedLearn(object):
         self.global_optim = optim.SGD(self.global_model.parameters(), lr=self.args.lr)
 
     def to_device(self):
-        self.device = torch.device("cuda" if use_cuda else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         for i in range(self.K):
             self.local_model[i].to(self.device)
         self.global_model.to(self.device)
@@ -227,7 +227,7 @@ class ScheduleFedLearn(object):
     def update_local(self, X, Y, k):
         # update a local model
         X = torch.FloatTensor(X)
-        Y = torch.FloatTensor(Y)
+        Y = torch.LongTensor(Y)
         N = len(Y)
         self.local_n_samples[k] = N
 
@@ -249,6 +249,7 @@ class ScheduleFedLearn(object):
 
                 optimizer.zero_grad()
                 output = model(x)
+                # compute loss
                 if self.method is 'SVM':
                     loss = torch.mean(torch.clamp(1 - output.t() * y, min=0))
                     loss += self.args.c * torch.mean(model.fc.weight ** 2)  # l2 penalty
@@ -258,10 +259,8 @@ class ScheduleFedLearn(object):
                     loss = F.nll_loss(output, y)
                 elif self.method is 'LogisticReg':
                     loss =  F.smooth_l1_loss(output, y)
-
                 else:
                     print('Method not implemented.... ')
-                    
                 loss.backward()
                 optimizer.step()
 
@@ -316,23 +315,26 @@ class ScheduleFedLearn(object):
                 for i, f in enumerate(self.local_model[k].parameters()):
                     f.data = global_params[i]
 
-    def predict_local(self, X, Y, k=None):
+    def predict(self, X, Y, k=None):
         X = torch.FloatTensor(X).to(self.device)
         if k is not None:
             self.local_model[k].eval()
             # prediction task based on the global params
-            predict = self.local_model[k](X).detach().numpy().squeeze()
+            predict = self.local_model[k](X).detach().squeeze()
         else:
             self.global_model.eval()
-            predict = self.global_model(X).detach().numpy().squeeze()
+            predict = self.global_model(X).detach().squeeze()
+
+
         if self.method is 'SVM':
+            predict = predict.numpy()
             predict[np.argwhere(predict >= 0)] = 1
             predict[np.argwhere(predict < 0)] = -1
             accuracy = np.sum(predict == Y) / len(Y)
         elif self.method is 'MNIST_CNN' or self.method is 'CIFAR10_CNN':
             # Future version should use a test loader here instead of one batch
-            Y.to(self.device)
-            test_loss += F.nll_loss(prdict, reduction='sum').item()  # sum up batch loss
+            Y = torch.LongTensor(Y).to(self.device)
+            test_loss = F.nll_loss(predict, Y, reduction='sum').item()  # sum up batch loss
             pred = predict.max(1, keepdim=True)[1]  # get the index of the max log-probability
             accuracy = pred.eq(Y.view_as(pred)).sum().item()
             accuracy /= len(Y)
@@ -343,13 +345,13 @@ class ScheduleFedLearn(object):
 
         return accuracy
 
-    def predict_global(self, X, Y):
-        self.global_model.eval()
-        X = torch.FloatTensor(X)
-        predict = self.global_model(X).detach().numpy().squeeze()
-        predict[np.argwhere(predict >= 0)] = 1
-        predict[np.argwhere(predict < 0)] = -1
-        accuracy = np.sum(predict == Y) / len(Y)
-
-        return accuracy
+    # def predict_global(self, X, Y):
+    #     self.global_model.eval()
+    #     X = torch.FloatTensor(X)
+    #     predict = self.global_model(X).detach().numpy().squeeze()
+    #     predict[np.argwhere(predict >= 0)] = 1
+    #     predict[np.argwhere(predict < 0)] = -1
+    #     accuracy = np.sum(predict == Y) / len(Y)
+    #
+    #     return accuracy
         

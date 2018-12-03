@@ -27,11 +27,8 @@ def sample(n_samples, X, y, with_label=[]):
             label_index += [i for i, x in enumerate(y) if x == label]
         X = X[label_index, :]
         y = y[label_index]
-
     index = np.random.choice(range(X.shape[0]), size=n_samples, replace=False)
     return X[index], y[index]
-
-
 
 def distrute_dataset(K, X, y, form='uniform'):
     # distribute the dataset X, y to K nodes with difference ways
@@ -45,3 +42,27 @@ def distrute_dataset(K, X, y, form='uniform'):
             X_dist.append(X[i*N_dist:(i+1)*N_dist,:])
             y_dist.append(y[i*N_dist:(i+1)*N_dist])
     return X_dist, y_dist
+
+def load_svm_data(K, with_label=[0, 8], reshape= False):
+    
+    train_set, valid_set, test_set = load_mnist()
+
+    X_train, y_train = sample(1000, train_set[0], train_set[1], with_label=with_label)
+    if len(with_label) == 2:
+        y_train[np.where(y_train == with_label[0])] = -1
+        y_train[np.where(y_train == with_label[1])] = 1
+    X_dist, y_dist = distrute_dataset(K, X_train, y_train)
+
+    X_test, y_test = sample(1000, test_set[0], test_set[1], with_label=with_label)
+    if len(with_label) == 2:
+        y_test[np.where(y_test == with_label[0])] = -1
+        y_test[np.where(y_test == with_label[1])] = 1
+    X_test_dist, y_test_dist = distrute_dataset(K, X_test, y_test)
+    
+    if reshape:
+        for i in range(len(X_dist)):
+            X_dist[i] = X_dist[i].reshape(X_dist[i].shape[0], 1, 28, 28)
+        for i in range(len(X_test_dist)):
+            X_test_dist[i] = X_test_dist[i].reshape(X_dist[i].shape[0], 1, 28, 28)
+        X_test = X_test.reshape(X_test.shape[0], 1, 28, 28)
+    return X_dist, y_dist, X_test_dist, y_test_dist, X_test, y_test
