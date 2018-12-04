@@ -11,8 +11,8 @@ parser.add_argument("--lr", type=float, default=0.01)
 parser.add_argument("--batchsize", type=int, default=10)
 parser.add_argument("--epoch", type=int, default=1)
 parser.add_argument("--prop_k", type=int, default=2)
-parser.add_argument("--threshhold", type=float, default=1)
-parser.add_argument("--seed", type=int, default=0)
+parser.add_argument("--threshhold", type=float, default=4)
+parser.add_argument("--seed", type=int, default=2)
 args = parser.parse_args()
 
 # set the random seeds
