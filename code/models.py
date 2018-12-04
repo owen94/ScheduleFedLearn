@@ -345,13 +345,3 @@ class ScheduleFedLearn(object):
 
         return accuracy
 
-    # def predict_global(self, X, Y):
-    #     self.global_model.eval()
-    #     X = torch.FloatTensor(X)
-    #     predict = self.global_model(X).detach().numpy().squeeze()
-    #     predict[np.argwhere(predict >= 0)] = 1
-    #     predict[np.argwhere(predict < 0)] = -1
-    #     accuracy = np.sum(predict == Y) / len(Y)
-    #
-    #     return accuracy
-        
