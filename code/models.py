@@ -172,7 +172,7 @@ class FedLearn(object):
 
 
 class ScheduleFedLearn(object):
-    def __init__(self, K,  args, in_dim=None, out_dim=None, method='SVM'):
+    def __init__(self, K,  args, lambdda_b=1e-2, alpha=1, in_dim=None, out_dim=None, method='SVM'):
         '''
         :param K: number of local nodes
         :param in_dim: input dim for SVM or logistic regression
@@ -183,12 +183,18 @@ class ScheduleFedLearn(object):
         self.K = K
         self.method = method
         self.args = args
+        # Stochastic ppp parameters
+        self.lambda_b = lambdda_b
+        self.alpha = alpha
+        # SVM parameters
         self.in_dim = in_dim
         self.out_dim = out_dim
+        # initialize architecture
         self.init_architecture()
         self.init_optimizers()
         self.to_device()
         self.local_n_samples = np.zeros(self.K)
+        self.Nb, self.PL_Mat = self.get_path_loss_matrix()
 
     def init_architecture(self):
         # initlize local nodes
@@ -344,4 +350,99 @@ class ScheduleFedLearn(object):
             print('Test method not implemented')
 
         return accuracy
+
+    def get_path_loss_matrix(self):
+        '''
+        :return: Nb: the number of access points in the area
+        PL_Mat: the revised user location matrix to compute the SINR
+        '''
+
+        side = 3 / np.sqrt(self.lambda_b)  # The side of observation window
+        Area = (2 * side) ** 2
+        # Generate the BS number according to Poisson distribution
+        Nb = np.random.poisson(self.lambda_b * Area)  # Number of BSs
+
+        # The location of BSs, being complex numbers
+        BS_loc = np.random.uniform(-side, side, (Nb, 1)) + 1j * np.random.uniform(-side, side, (Nb, 1))
+        BS_loc = sorted(BS_loc, key=abs)  # sort according to locations, BS_loc[0] can be regarded as the typical
+
+        # The UE locations, each UE locates inside the Voronoi cell of a BS
+        UE_MatLoc = np.zeros((Nb, self.K), dtype=np.complex_)
+        UE_OcuIdx = np.zeros(Nb)
+
+        OcuSm = 0
+        while OcuSm < Nb * self.K:
+
+            tmp_ue = np.random.uniform(-side, side, 1) + 1j * np.random.uniform(-side, side, 1)
+            dist = np.abs(BS_loc - tmp_ue)
+            row_indx = np.argmin(dist)
+            if UE_OcuIdx[row_indx] < self.K:
+                UE_MatLoc[row_indx, UE_OcuIdx[row_indx]] = tmp_ue
+                UE_OcuIdx[row_indx] += 1
+                OcuSm += 1
+
+        D_Mat = np.abs(UE_MatLoc - BS_loc[0])
+        PL_Mat = D_Mat ** (-self.alpha)
+
+        return Nb, PL_Mat
+
+
+    def limited_global_aggregation(self, mode, sigma=0):
+
+        m = Exponential(1)
+        h = m.sample(torch.Size([self.Nb, self.K]))
+
+        # select which local update can be used for aggregation
+        if mode == 'random':
+            node = np.random.choice(range(self.K), size=self.args.prop_k, replace=False)
+        elif mode == 'rrobin':
+            nodes = np.arange(self.K)
+            batch_index = (step * self.args.prop_k) % self.K
+            node = nodes[batch_index * self.args.prop_k: (batch_index + 1) * self.args.prop_k]
+        elif mode == 'prop_k':
+            node = np.argsort(h.numpy()[0,:])[-self.args.prop_k:]
+        else:
+            node = np.arange(self.K)
+
+        success_node = []
+        RecVec = h * self.PL_Mat
+        SINR = RecVec[0] / (torch.sum(RecVec[1:,:], dim=0) + sigma)
+
+        for i in node:
+            if SINR[i] >= self.args.threshhold:
+                success_node.append(i)
+
+        # only aggregatiate the nodes taht has a good channle state
+        params = []
+        N_samples = np.sum(self.local_n_samples[success_node])
+        if N_samples == 0:
+            print('ALL NODES FAILED!!!')
+        else:
+            for i in success_node:
+                param = self.local_model[i].state_dict()
+                param.update((x, y * self.local_n_samples[i]) for x, y in param.items())
+                params.append(list(param.values()))
+
+            global_params = [sum(x) / N_samples for x in zip(*params)]
+
+            # set the parameters for the global model
+            for i, f in enumerate(self.global_model.parameters()):
+                f.data = global_params[i]
+
+            # set the parameters for the local model
+            for k in node:
+                for i, f in enumerate(self.local_model[k].parameters()):
+                    f.data = global_params[i]
+        
+        
+        
+
+
+
+
+
+
+
+
+
 
