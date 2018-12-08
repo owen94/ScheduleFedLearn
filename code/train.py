@@ -51,7 +51,7 @@ def train(mode, method):
             fl_model.update_local(X_dist[k], y_dist[k], k)
         if (t % tau == 0):
             print('Perform global aggregation in step {}'.format(t))
-            fl_model.global_aggregation(mode=mode, step=t)
+            fl_model.location_global_aggregation(mode=mode, step=t)
             test_accuracy = fl_model.predict(X_test, y_test)
             print('Global test accuracy at step {} is {}'.format(t, test_accuracy))
             test_accuracy_list.append(test_accuracy)

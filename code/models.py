@@ -194,6 +194,7 @@ class ScheduleFedLearn(object):
         self.init_optimizers()
         self.to_device()
         self.local_n_samples = np.zeros(self.K)
+        # set the number of APs and location of APs
         self.Nb, self.PL_Mat = self.get_path_loss_matrix()
 
     def init_architecture(self):
@@ -368,7 +369,7 @@ class ScheduleFedLearn(object):
 
         # The UE locations, each UE locates inside the Voronoi cell of a BS
         UE_MatLoc = np.zeros((Nb, self.K), dtype=np.complex_)
-        UE_OcuIdx = np.zeros(Nb)
+        UE_OcuIdx = np.zeros(Nb,dtype=np.int)
 
         OcuSm = 0
         while OcuSm < Nb * self.K:
@@ -384,10 +385,10 @@ class ScheduleFedLearn(object):
         D_Mat = np.abs(UE_MatLoc - BS_loc[0])
         PL_Mat = D_Mat ** (-self.alpha)
 
-        return Nb, PL_Mat
+        return Nb, torch.FloatTensor(PL_Mat)
 
 
-    def limited_global_aggregation(self, mode, sigma=0):
+    def location_global_aggregation(self, mode='random', step=0, sigma=0):
 
         m = Exponential(1)
         h = m.sample(torch.Size([self.Nb, self.K]))
