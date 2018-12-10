@@ -172,7 +172,7 @@ class FedLearn(object):
 
 
 class ScheduleFedLearn(object):
-    def __init__(self, K,  args, lambdda_b=1e-2, alpha=1, in_dim=None, out_dim=None, method='SVM'):
+    def __init__(self, K,  args, lambdda_b=1e-4, alpha=4, in_dim=None, out_dim=None, method='SVM'):
         '''
         :param K: number of local nodes
         :param in_dim: input dim for SVM or logistic regression
@@ -362,6 +362,8 @@ class ScheduleFedLearn(object):
         Area = (2 * side) ** 2
         # Generate the BS number according to Poisson distribution
         Nb = np.random.poisson(self.lambda_b * Area)  # Number of BSs
+        
+        print('Initialized {} Access Points'.format(Nb))
 
         # The location of BSs, being complex numbers
         BS_loc = np.random.uniform(-side, side, (Nb, 1)) + 1j * np.random.uniform(-side, side, (Nb, 1))
@@ -408,6 +410,7 @@ class ScheduleFedLearn(object):
         success_node = []
         RecVec = h * self.PL_Mat
         SINR = RecVec[0] / (torch.sum(RecVec[1:,:], dim=0) + sigma)
+        #print(SINR)
 
         for i in node:
             if SINR[i] >= self.args.threshhold:

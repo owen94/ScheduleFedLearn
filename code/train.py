@@ -11,7 +11,7 @@ parser.add_argument("--lr", type=float, default=0.01)
 parser.add_argument("--batchsize", type=int, default=10)
 parser.add_argument("--epoch", type=int, default=1)
 parser.add_argument("--prop_k", type=int, default=2)
-parser.add_argument("--threshhold", type=float, default=4)
+parser.add_argument("--threshhold", type=float, default=0.3)
 parser.add_argument("--seed", type=int, default=2)
 args = parser.parse_args()
 
@@ -93,7 +93,7 @@ plt.plot(test_accuracy_list3)
 plt.legend(['random', 'rrboin', 'prop_k'])
 plt.xlabel('#Training steps')
 plt.ylabel('Test Accuracy')
-plt.title('threshhold = ' + str(args.threshhold) +
+plt.title('PPP threshhold = ' + str(args.threshhold) +
           ', prop_k = ' + str(args.prop_k) + ', #local nodes = ' + str(K))
 plt.show()
 
