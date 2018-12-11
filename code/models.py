@@ -61,118 +61,8 @@ class CIFAR10_CNN(nn.Module):
         return x
 
 
-class FedLearn(object):
-    def __init__(self, K, in_dim, out_dim, args, method='SVM'):
-        self.K = K
-        self.method = method
-        self.args = args
-        self.in_dim = in_dim
-        self.out_dim = out_dim
-        self.init_architecture()
-        self.init_optimizers()
-        self.local_n_samples = np.zeros(self.K)
-
-    def init_architecture(self):
-        # initlize local nodes
-        self.local_model = []
-        for i in range(self.K):
-            self.local_model.append(LinearSVM(self.in_dim, self.out_dim))
-        self.global_model = LinearSVM(self.in_dim, self.out_dim)
-
-    def init_optimizers(self):
-        self.optims = []
-        for i in range(self.K):
-            self.optims.append(optim.SGD(self.local_model[i].parameters(), lr=self.args.lr))
-        self.global_optim = optim.SGD(self.global_model.parameters(), lr=self.args.lr)
-
-    def update_local(self, X, Y, k):
-        # update a local model
-        X = torch.FloatTensor(X)
-        Y = torch.FloatTensor(Y)
-        N = len(Y)
-        self.local_n_samples[k] = N
-
-        model = self.local_model[k]
-        optimizer = self.optims[k]
-        model.train()
-
-        for epoch in range(self.args.epoch):
-            perm = torch.randperm(N)
-            sum_loss = 0
-
-            for i in range(0, N, self.args.batchsize):
-                x = X[perm[i: i + self.args.batchsize]]
-                y = Y[perm[i: i + self.args.batchsize]]
-
-                if torch.cuda.is_available():
-                    x = x.cuda()
-                    y = y.cuda()
-
-                optimizer.zero_grad()
-                output = model(x)
-                loss = torch.mean(torch.clamp(1 - output.t() * y, min=0))
-                loss += self.args.c * torch.mean(model.fc.weight ** 2)  # l2 penalty
-                loss.backward()
-                optimizer.step()
-
-                sum_loss += to_np(loss)
-
-            #print("Node: {} Epoch: {:4d}  loss:{}".format(k, epoch, sum_loss / N))
-
-    def global_aggregation(self, node=None):
-        # do a global aggregation
-        # nodes: the index of nodes to be updated, a list of integers
-        params = []
-        if node is None:
-            node = np.arange(self.K)
-        N_samples = np.sum(self.local_n_samples[node])
-        if N_samples ==0:
-            print('Please allocate samples to node before global aggregation. ')
-
-        for i in node:
-            param = self.local_model[i].state_dict()
-            param.update((x, y * self.local_n_samples[i]) for x, y in param.items())
-            params.append(list(param.values()))
-
-        global_params = [sum(x) / N_samples for x in zip(*params)]
-
-        # set the parameters for the global model
-        for i, f in enumerate(self.global_model.parameters()):
-            f.data = global_params[i]
-
-        # set the parameters for the local model
-        for k in node:
-            for i, f in enumerate(self.local_model[k].parameters()):
-                f.data = global_params[i]
-
-    def predict_local(self, X, Y, k=None):
-        # prediction task based on the global params
-        self.local_model[k].eval()
-        X = torch.FloatTensor(X)
-        predict = self.local_model[k](X).detach().numpy().squeeze()
-        predict[np.argwhere(predict>=0)] = 1
-        predict[np.argwhere(predict<0)] = -1
-        # print(predict)
-        # print(Y)
-        # print(predict==Y)
-        # print(np.sum(predict==Y))
-        accuracy = np.sum(predict==Y)/len(Y)
-
-        return accuracy
-    
-    def predict_global(self, X, Y):
-        self.global_model.eval()
-        X = torch.FloatTensor(X)
-        predict = self.global_model(X).detach().numpy().squeeze()
-        predict[np.argwhere(predict >= 0)] = 1
-        predict[np.argwhere(predict < 0)] = -1
-        accuracy = np.sum(predict == Y) / len(Y)
-
-        return accuracy
-
-
 class ScheduleFedLearn(object):
-    def __init__(self, K,  args, lambdda_b=1e-4, alpha=4, in_dim=None, out_dim=None, method='SVM'):
+    def __init__(self, K,  args, Nb, lam=1e-4, alpha=4, in_dim=None, out_dim=None, method='SVM'):
         '''
         :param K: number of local nodes
         :param in_dim: input dim for SVM or logistic regression
@@ -184,8 +74,9 @@ class ScheduleFedLearn(object):
         self.method = method
         self.args = args
         # Stochastic ppp parameters
-        self.lambda_b = lambdda_b
+        self.Nb = Nb
         self.alpha = alpha
+        self.lam = lam
         # SVM parameters
         self.in_dim = in_dim
         self.out_dim = out_dim
@@ -195,7 +86,7 @@ class ScheduleFedLearn(object):
         self.to_device()
         self.local_n_samples = np.zeros(self.K)
         # set the number of APs and location of APs
-        self.Nb, self.PL_Mat = self.get_path_loss_matrix()
+        self.PL_Mat = self.get_path_loss_matrix()
 
     def init_architecture(self):
         # initlize local nodes
@@ -275,53 +166,6 @@ class ScheduleFedLearn(object):
 
             # print("Node: {} Epoch: {:4d}  loss:{}".format(k, epoch, sum_loss / N))
 
-    def global_aggregation(self, mode='random', step=0):
-        # do a global aggregation
-        # nodes: the index of nodes to be updated, a list of integers
-        m = Exponential(1)
-        h = m.sample(torch.Size([self.K])).squeeze()
-
-        #transfer = torch.where(h>=threshhold, torch.FloatTensor([1]), torch.FloatTensor([0]))
-
-        # select which local update can be used for aggregation
-        if mode == 'random':
-            node = np.random.choice(range(self.K), size=self.args.prop_k, replace=False)
-        elif mode == 'rrobin':
-            nodes = np.arange(self.K)
-            batch_index = (step*self.args.prop_k)%self.K
-            node = nodes[ batch_index * self.args.prop_k : (batch_index+1) * self.args.prop_k]
-        elif mode == 'prop_k':
-            node = np.argsort(h.numpy())[-self.args.prop_k:]
-        else:
-            node = np.arange(self.K)
-
-        success_node = []
-        for i in node:
-            if h[i] >= self.args.threshhold:
-                success_node.append(i)
-
-        # only aggregatiate the nodes taht has a good channle state
-        params = []
-        N_samples = np.sum(self.local_n_samples[success_node])
-        if N_samples == 0:
-            print('ALL NODES FAILED!!!')
-        else:
-            for i in success_node:
-                param = self.local_model[i].state_dict()
-                param.update((x, y * self.local_n_samples[i]) for x, y in param.items())
-                params.append(list(param.values()))
-
-            global_params = [sum(x) / N_samples for x in zip(*params)]
-
-            # set the parameters for the global model
-            for i, f in enumerate(self.global_model.parameters()):
-                f.data = global_params[i]
-
-            # set the parameters for the local model
-            for k in node:
-                for i, f in enumerate(self.local_model[k].parameters()):
-                    f.data = global_params[i]
-
     def predict(self, X, Y, k=None):
         X = torch.FloatTensor(X).to(self.device)
         if k is not None:
@@ -358,23 +202,23 @@ class ScheduleFedLearn(object):
         PL_Mat: the revised user location matrix to compute the SINR
         '''
 
-        side = 3 / np.sqrt(self.lambda_b)  # The side of observation window
-        Area = (2 * side) ** 2
-        # Generate the BS number according to Poisson distribution
-        Nb = np.random.poisson(self.lambda_b * Area)  # Number of BSs
+        # side = 3 / np.sqrt(self.lambda_b)  # The side of observation window
+        # Area = (2 * side) ** 2
+        # # Generate the BS number according to Poisson distribution
+        # Nb = np.random.poisson(self.lambda_b * Area)  # Number of BSs
         
-        print('Initialized {} Access Points'.format(Nb))
-
+        print('Initialized {} Access Points'.format(self.Nb))
+        side = 3 / np.sqrt(self.lam)
         # The location of BSs, being complex numbers
-        BS_loc = np.random.uniform(-side, side, (Nb, 1)) + 1j * np.random.uniform(-side, side, (Nb, 1))
+        BS_loc = np.random.uniform(-side, side, (self.Nb, 1)) + 1j * np.random.uniform(-side, side, (self.Nb, 1))
         BS_loc = sorted(BS_loc, key=abs)  # sort according to locations, BS_loc[0] can be regarded as the typical
 
         # The UE locations, each UE locates inside the Voronoi cell of a BS
-        UE_MatLoc = np.zeros((Nb, self.K), dtype=np.complex_)
-        UE_OcuIdx = np.zeros(Nb,dtype=np.int)
+        UE_MatLoc = np.zeros((self.Nb, self.K), dtype=np.complex_)
+        UE_OcuIdx = np.zeros(self.Nb,dtype=np.int)
 
         OcuSm = 0
-        while OcuSm < Nb * self.K:
+        while OcuSm < self.Nb * self.K:
 
             tmp_ue = np.random.uniform(-side, side, 1) + 1j * np.random.uniform(-side, side, 1)
             dist = np.abs(BS_loc - tmp_ue)
@@ -387,7 +231,7 @@ class ScheduleFedLearn(object):
         D_Mat = np.abs(UE_MatLoc - BS_loc[0])
         PL_Mat = D_Mat ** (-self.alpha)
 
-        return Nb, torch.FloatTensor(PL_Mat)
+        return torch.FloatTensor(PL_Mat)
 
 
     def location_global_aggregation(self, mode='random', step=0, sigma=0):
@@ -410,6 +254,7 @@ class ScheduleFedLearn(object):
         success_node = []
         RecVec = h * self.PL_Mat
         SINR = RecVec[0] / (torch.sum(RecVec[1:,:], dim=0) + sigma)
+        #print(RecVec)
         #print(SINR)
 
         for i in node:
@@ -421,22 +266,29 @@ class ScheduleFedLearn(object):
         N_samples = np.sum(self.local_n_samples[success_node])
         if N_samples == 0:
             print('ALL NODES FAILED!!!')
+            # print(self.global_model.state_dict()['conv1.weight'][0,0,0,:])
+            # print(self.local_model[2].state_dict()['conv1.weight'][0,0,0,:])
         else:
             for i in success_node:
                 param = self.local_model[i].state_dict()
+                #print(param['conv1.weight'][0, 0, 0, :])
                 param.update((x, y * self.local_n_samples[i]) for x, y in param.items())
                 params.append(list(param.values()))
-
             global_params = [sum(x) / N_samples for x in zip(*params)]
-
+            #print(global_params[0][0,0,0,:])
             # set the parameters for the global model
             for i, f in enumerate(self.global_model.parameters()):
-                f.data = global_params[i]
+                f.data.copy_(global_params[i])
 
+            #print(self.global_model.state_dict()['conv1.weight'][0, 0, 0, :])
             # set the parameters for the local model
-            for k in node:
+            for k in range(self.K):
                 for i, f in enumerate(self.local_model[k].parameters()):
-                    f.data = global_params[i]
+                    #f.data = global_params[i].copy_()
+                    f.data.copy_(global_params[i])
+                    
+        print(success_node)
+        return success_node
         
         
         

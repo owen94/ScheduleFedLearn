@@ -47,7 +47,7 @@ def load_svm_data(K, with_label=[0, 8], reshape= False):
     
     train_set, valid_set, test_set = load_mnist()
 
-    X_train, y_train = sample(1000, train_set[0], train_set[1], with_label=with_label)
+    X_train, y_train = sample(3000, train_set[0], train_set[1], with_label=with_label)
     if len(with_label) == 2:
         y_train[np.where(y_train == with_label[0])] = -1
         y_train[np.where(y_train == with_label[1])] = 1
@@ -63,6 +63,18 @@ def load_svm_data(K, with_label=[0, 8], reshape= False):
         for i in range(len(X_dist)):
             X_dist[i] = X_dist[i].reshape(X_dist[i].shape[0], 1, 28, 28)
         for i in range(len(X_test_dist)):
-            X_test_dist[i] = X_test_dist[i].reshape(X_dist[i].shape[0], 1, 28, 28)
+            X_test_dist[i] = X_test_dist[i].reshape(X_test_dist[i].shape[0], 1, 28, 28)
         X_test = X_test.reshape(X_test.shape[0], 1, 28, 28)
     return X_dist, y_dist, X_test_dist, y_test_dist, X_test, y_test
+
+
+def generate_AP(lam):
+    side = 3 / np.sqrt(lam)  # The side of observation window
+    Area = (2 * side) ** 2
+    # Generate the BS number according to Poisson distribution
+    Nb = np.random.poisson(lam * Area)
+    
+    return Nb
+
+def db_to_linear(x):
+    return 10 ** (x/10)
