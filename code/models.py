@@ -62,7 +62,7 @@ class CIFAR10_CNN(nn.Module):
 
 
 class ScheduleFedLearn(object):
-    def __init__(self, K,  args, Nb, lam=1e-4, alpha=4, in_dim=None, out_dim=None, method='SVM'):
+    def __init__(self, K,  args, Nb, lam=1e-4, alpha=3.8, in_dim=None, out_dim=None, method='SVM'):
         '''
         :param K: number of local nodes
         :param in_dim: input dim for SVM or logistic regression
@@ -125,7 +125,7 @@ class ScheduleFedLearn(object):
     def update_local(self, X, Y, k):
         # update a local model
         X = torch.FloatTensor(X)
-        Y = torch.LongTensor(Y)
+        Y = torch.FloatTensor(Y)
         N = len(Y)
         self.local_n_samples[k] = N
 
@@ -244,8 +244,11 @@ class ScheduleFedLearn(object):
             node = np.random.choice(range(self.K), size=self.args.prop_k, replace=False)
         elif mode == 'rrobin':
             nodes = np.arange(self.K)
-            batch_index = (step * self.args.prop_k) % self.K
-            node = nodes[batch_index * self.args.prop_k: (batch_index + 1) * self.args.prop_k]
+            node_index = (step * self.args.prop_k) % self.K
+            if node_index + self.args.prop_k <= self.K:
+                node = nodes[node_index : node_index + self.args.prop_k]
+            else:
+                node = nodes[node_index:] + nodes[: node_index + self.args.prop_k - self.K]
         elif mode == 'prop_k':
             node = np.argsort(h.numpy()[0,:])[-self.args.prop_k:]
         else:

@@ -14,28 +14,30 @@ parser.add_argument("--prop_k", type=int, default=5)
 parser.add_argument("--threshhold", type=float, default=20)
 parser.add_argument("--seed", type=int, default=0)
 args = parser.parse_args()
+db = args.threshhold
 args.threshhold = db_to_linear(args.threshhold)
 print(args.threshhold)
 
 # set the random seeds
-torch.manual_seed(args.seed)
-np.random.seed(args.seed)
-random.seed(1234)
+# move to the main function to test multiple seeds
 
 # set the architecture parameters
-K = 30  # number of local nodes
-T = 500 # total number of training steps
+K = 100  # number of local nodes
+T = 300 # total number of training steps
 tau = 10 # global aggregation frequency
 in_dim = 784
 out_dim = 1
 
 def train(mode, method, lam=1e-4):
 
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+    random.seed(1234)
     # prepare dataset
     if method is 'SVM':
-        X_dist, y_dist, X_test_dist, y_test_dist = load_svm_data(K, with_label=[0, 8])
+        X_dist, y_dist, X_test_dist, y_test_dist, X_test, y_test = load_svm_data(K, with_label=[0, 8],n_samples=K*5 )
     elif method is 'MNIST_CNN':
-        X_dist, y_dist, X_test_dist, y_test_dist, X_test, y_test = load_svm_data(K, with_label=[], reshape=True)
+        X_dist, y_dist, X_test_dist, y_test_dist, X_test, y_test = load_svm_data(K, with_label=[], reshape=True, n_samples=K*50)
     elif method is 'CIFAR10_CNN':
         print('Need to be implemented. ')
     else: 
@@ -75,27 +77,56 @@ def train(mode, method, lam=1e-4):
     return success_nodes, test_accuracy_list
 
 
-success_nodes1, test_accuracy_list1 = train('random', 'MNIST_CNN')
-success_nodes2, test_accuracy_list2 = train('rrobin', 'MNIST_CNN')
-success_nodes3, test_accuracy_list3 = train('prop_k', 'MNIST_CNN')
+if __name__ == '__main__':
 
-plt.figure()
-plt.plot(test_accuracy_list1)
-plt.plot(test_accuracy_list2)
-plt.plot(test_accuracy_list3)
-plt.legend(['random', 'rrboin', 'prop_k'])
-plt.xlabel('#Training steps')
-plt.ylabel('Test Accuracy')
-plt.title('PPP threshhold = ' + str(args.threshhold) +
-          ', prop_k = ' + str(args.prop_k) + ', #local nodes = ' + str(K))
-plt.show()
 
-unique_elements1, counts_elements1 = np.unique(np.asarray(success_nodes1), return_counts=True)
-unique_elements2, counts_elements2 = np.unique(np.asarray(success_nodes2), return_counts=True)
-unique_elements3, counts_elements3 = np.unique(np.asarray(success_nodes3), return_counts=True)
 
-print('random', unique_elements1, counts_elements1)
-print('rrobin', unique_elements2, counts_elements2)
-print('prop_k', unique_elements3, counts_elements3)
+    seed_list = np.arange(20)
+    test_rr = []
+    test_rs = []
+    test_pf = []
+
+    for seed in seed_list:
+        args.seed = seed
+        success_nodes1, test_accuracy_list1 = train('random', 'SVM')
+        success_nodes2, test_accuracy_list2 = train('rrobin', 'SVM')
+        success_nodes3, test_accuracy_list3 = train('prop_k', 'SVM')
+
+        test_rs.append(test_accuracy_list1)
+        test_rr.append(test_accuracy_list2)
+        test_pf.append(test_accuracy_list3)
+
+    plt.figure()
+    mean_test_rs = np.mean(np.asarray(test_rs), axis=0)
+    mean_test_rr = np.mean(np.asarray(test_rr), axis=0)
+    mean_test_pf = np.mean(np.asarray(test_pf), axis=0)
+    plt.plot(mean_test_rs)
+    plt.plot(mean_test_rr)
+    plt.plot(mean_test_pf)
+    plt.legend(['random', 'rrboin', 'prop_k'])
+    plt.xlabel('#Training steps')
+    plt.ylabel('Test Accuracy')
+    plt.title('PPP threshhold = ' + str(db) +
+              'dB, prop_k = ' + str(args.prop_k) + ', #local nodes = ' + str(K))
+    plt.show()
+
+    unique_elements1, counts_elements1 = np.unique(np.asarray(success_nodes1), return_counts=True)
+    unique_elements2, counts_elements2 = np.unique(np.asarray(success_nodes2), return_counts=True)
+    unique_elements3, counts_elements3 = np.unique(np.asarray(success_nodes3), return_counts=True)
+
+    print('random', unique_elements1, counts_elements1)
+    print('rrobin', unique_elements2, counts_elements2)
+    print('prop_k', unique_elements3, counts_elements3)
+
+    # save the results
+
+    path = '../results/'
+    if not os.path.exists(path):
+        os.mkdir(path)
+
+    np.save(os.path.join(path, "test_rr.npy"), test_rr)
+    np.save(os.path.join(path, "test_rs.npy"), test_rs)
+    np.save(os.path.join(path, "test_pf.npy"), test_pf)
+
 
 

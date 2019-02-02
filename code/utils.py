@@ -4,6 +4,7 @@ import numpy as np
 import math
 import torch
 import torch.nn as nn
+import os
 
 def to_np(x):
     return x.data.cpu().numpy()
@@ -43,11 +44,11 @@ def distrute_dataset(K, X, y, form='uniform'):
             y_dist.append(y[i*N_dist:(i+1)*N_dist])
     return X_dist, y_dist
 
-def load_svm_data(K, with_label=[0, 8], reshape= False):
+def load_svm_data(K, with_label=[0, 8], reshape= False, n_samples=3000):
     
     train_set, valid_set, test_set = load_mnist()
 
-    X_train, y_train = sample(3000, train_set[0], train_set[1], with_label=with_label)
+    X_train, y_train = sample(n_samples, train_set[0], train_set[1], with_label=with_label)
     if len(with_label) == 2:
         y_train[np.where(y_train == with_label[0])] = -1
         y_train[np.where(y_train == with_label[1])] = 1
