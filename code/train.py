@@ -11,7 +11,7 @@ parser.add_argument("--lr", type=float, default=0.01)
 parser.add_argument("--batchsize", type=int, default=10)
 parser.add_argument("--epoch", type=int, default=1)
 parser.add_argument("--prop_k", type=int, default=5)
-parser.add_argument("--threshhold", type=float, default=20)
+parser.add_argument("--threshhold", type=float, default=30)
 parser.add_argument("--seed", type=int, default=0)
 args = parser.parse_args()
 db = args.threshhold
@@ -23,7 +23,7 @@ print(args.threshhold)
 
 # set the architecture parameters
 K = 100  # number of local nodes
-T = 300 # total number of training steps
+T = 500 # total number of training steps
 tau = 10 # global aggregation frequency
 in_dim = 784
 out_dim = 1
@@ -37,7 +37,7 @@ def train(mode, method, lam=1e-4):
     if method is 'SVM':
         X_dist, y_dist, X_test_dist, y_test_dist, X_test, y_test = load_svm_data(K, with_label=[0, 8],n_samples=K*5 )
     elif method is 'MNIST_CNN':
-        X_dist, y_dist, X_test_dist, y_test_dist, X_test, y_test = load_svm_data(K, with_label=[], reshape=True, n_samples=K*50)
+        X_dist, y_dist, X_test_dist, y_test_dist, X_test, y_test = load_svm_data(K, with_label=[], reshape=True, n_samples=K*30)
     elif method is 'CIFAR10_CNN':
         print('Need to be implemented. ')
     else: 
@@ -81,16 +81,17 @@ if __name__ == '__main__':
 
 
 
-    seed_list = np.arange(20)
+    seed_list = np.arange(10)
     test_rr = []
     test_rs = []
     test_pf = []
+    mode = 'MNIST_CNN'
 
     for seed in seed_list:
         args.seed = seed
-        success_nodes1, test_accuracy_list1 = train('random', 'SVM')
-        success_nodes2, test_accuracy_list2 = train('rrobin', 'SVM')
-        success_nodes3, test_accuracy_list3 = train('prop_k', 'SVM')
+        success_nodes1, test_accuracy_list1 = train('random', mode)
+        success_nodes2, test_accuracy_list2 = train('rrobin', mode)
+        success_nodes3, test_accuracy_list3 = train('prop_k', mode)
 
         test_rs.append(test_accuracy_list1)
         test_rr.append(test_accuracy_list2)
@@ -124,9 +125,9 @@ if __name__ == '__main__':
     if not os.path.exists(path):
         os.mkdir(path)
 
-    np.save(os.path.join(path, "test_rr.npy"), test_rr)
-    np.save(os.path.join(path, "test_rs.npy"), test_rs)
-    np.save(os.path.join(path, "test_pf.npy"), test_pf)
+    np.save(os.path.join(path, "test_rr_" + str(db) + "_" + mode + ".npy"), test_rr)
+    np.save(os.path.join(path, "test_rs_" + str(db) + "_" + mode + ".npy"), test_rs)
+    np.save(os.path.join(path, "test_pf_" + str(db) + "_" + mode + ".npy"), test_pf)
 
 
 

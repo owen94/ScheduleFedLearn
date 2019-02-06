@@ -125,7 +125,7 @@ class ScheduleFedLearn(object):
     def update_local(self, X, Y, k):
         # update a local model
         X = torch.FloatTensor(X)
-        Y = torch.FloatTensor(Y)
+        Y = torch.LongTensor(Y)
         N = len(Y)
         self.local_n_samples[k] = N
 
