@@ -1,7 +1,4 @@
-from models import *
-from utils import *
-import argparse
-import matplotlib.pyplot as plt
+from models i`lot as plt
 import random
 
 # set the training parameters
@@ -35,7 +32,7 @@ def train(mode, method, lam=1e-4):
     random.seed(1234)
     # prepare dataset
     if method is 'SVM':
-        X_dist, y_dist, X_test_dist, y_test_dist, X_test, y_test = load_svm_data(K, with_label=[0, 8],n_samples=K*5 )
+        X_dist, y_dist, X_test_dist, y_test_dist, X_test, y_test = load_svm_data(K, with_label=[0, 8],n_samples=K*5)
     elif method is 'MNIST_CNN':
         X_dist, y_dist, X_test_dist, y_test_dist, X_test, y_test = load_svm_data(K, with_label=[], reshape=True, n_samples=K*30)
     elif method is 'CIFAR10_CNN':
