@@ -19,4 +19,4 @@ There are 3 different scheduling policies to be evaluated:
 1. Implement other ML algorithms: logistic regression, k-means, and CNN
 2. Compare the three scheduling policies and plot the results. 
 3. Find more datasets for experiments
-
+4. Revise the major version 
